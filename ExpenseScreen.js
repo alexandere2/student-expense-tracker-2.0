@@ -203,139 +203,298 @@ export default function ExpenseScreen() {
     loadExpenses();
   };
 
+// Task 3: Allow Editing Existing Expenses (UPDATE)
+  const startEdit = (exp) => {
+    setEditingExpense(exp);
+    setEditAmount(String(exp.amount));
+    setEditingCategory(exp.category);
+    setEditNote(exp.note || '');
+    setEditDate(exp.date || formatDateISO());
+  };
 
+  // Save Changes (SQLite Update)
+  const saveEdit = async() => {
+    if (!editingExpense) return;
+
+    const amountNum = parseFloat(editAmount);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      return Alert.alert("Invalid Amount", "Enter a positive number.");
+    }
+
+    if (!editCategory.trim()) {
+      return Alert.alert("Category Required", "Enter a category.");
+    }
+    
+    await db.runAsync(
+      `UPDATE expenses
+      SET amount = ?, category = ?. note = ?, date = ?
+      WHERE id = ?;`,
+      [amountNum, editCategory.trim(), editNote || null, editDate, editingExpense.id]
+      );
+
+    setEditingExpense(null);
+    loadExpenses();
+  };
+
+  // Initial load: Ensure schema + load expenses
+  useEffect(() => {
+    (async () => {
+      await ensureSchema();
+      await loadExpenses();
+    })();
+  }, []);
+
+  // Re-load when filter changes
+  useEffect(() => {
+    loadExpenses();
+  }, [filter]);
+
+  // Render Each Expense Row 
   const renderExpense = ({ item }) => (
-    <View style={styles.expenseRow}>
+   <TouchableOpacity
+      style={styles.expenseRow}
+      onPress={() => startEdit(item)}
+    >
       <View style={{ flex: 1 }}>
-        <Text style={styles.expenseAmount}>${Number(item.amount).toFixed(2)}</Text>
-        <Text style={styles.expenseCategory}>{item.category}</Text>
+        <Text style={styles.expenseAmount}>${item.amount.toFixed(2)}</Text>
+        <Text style={styles.expenseCategory}>
+          {item.category} • {item.date}
+        </Text>
         {item.note ? <Text style={styles.expenseNote}>{item.note}</Text> : null}
       </View>
 
       <TouchableOpacity onPress={() => deleteExpense(item.id)}>
         <Text style={styles.delete}>✕</Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 
-  useEffect(() => {
-    async function setup() {
-      await db.execAsync(`
-        CREATE TABLE IF NOT EXISTS expenses (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          amount REAL NOT NULL,
-          category TEXT NOT NULL,
-          note TEXT
-        );
-      `);
 
-      await loadExpenses();
-    }
-
-    setup();
-  }, []);
-
+  // Main Render
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.heading}>Student Expense Tracker</Text>
 
+      // Add New Expense Form 
       <View style={styles.form}>
         <TextInput
           style={styles.input}
           placeholder="Amount (e.g. 12.50)"
-          placeholderTextColor="#9ca3af"
           keyboardType="numeric"
           value={amount}
           onChangeText={setAmount}
         />
         <TextInput
           style={styles.input}
-          placeholder="Category (Food, Books, Rent...)"
-          placeholderTextColor="#9ca3af"
+          placeholder="Category"
           value={category}
           onChangeText={setCategory}
         />
         <TextInput
           style={styles.input}
           placeholder="Note (optional)"
-          placeholderTextColor="#9ca3af"
           value={note}
           onChangeText={setNote}
         />
         <Button title="Add Expense" onPress={addExpense} />
       </View>
 
+      // Filter Buttons 
+      <View style={styles.filterRow}>
+        <TouchableOpacity
+          style={[styles.filterBtn, filter === 'all' && styles.filterActive]}
+          onPress={() => setFilter('all')}
+        >
+          <Text style={styles.filterText}>All</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterBtn, filter === 'week' && styles.filterActive]}
+          onPress={() => setFilter('week')}
+        >
+          <Text style={styles.filterText}>This Week</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterBtn, filter === 'month' && styles.filterActive]}
+          onPress={() => setFilter('month')}
+        >
+          <Text style={styles.filterText}>This Month</Text>
+        </TouchableOpacity>
+      </View>
+
+     // Totals Section
+      <View style={styles.totals}>
+        <Text style={styles.totalHeading}>
+          Total ({filter === 'all' ? 'All' : filter === 'week' ? 'This Week' : 'This Month'}):
+          ${total.toFixed(2)}
+        </Text>
+
+        <Text style={styles.subHeading}>By Category:</Text>
+        {byCategory.length === 0 ? (
+          <Text style={styles.emptySmall}>No data for this filter</Text>
+        ) : (
+          byCategory.map((c) => (
+            <Text key={c.category} style={styles.catRow}>
+              • {c.category}: ${c.sum.toFixed(2)}
+            </Text>
+          ))
+        )}
+      </View>
+
+      // Expense List
       <FlatList
         data={expenses}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderExpense}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No expenses yet.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.empty}>No expenses found.</Text>}
       />
 
-      <Text style={styles.footer}>
-        Enter your expenses and they’ll be saved locally with SQLite.
-      </Text>
+      // Edit Modal 
+      <Modal visible={!!editingExpense} transparent animationType="slide">
+        <View style={styles.modalBack}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Edit Expense</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Amount"
+              keyboardType="numeric"
+              value={editAmount}
+              onChangeText={setEditAmount}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Category"
+              value={editCategory}
+              onChangeText={setEditCategory}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Note"
+              value={editNote}
+              onChangeText={setEditNote}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Date (YYYY-MM-DD)"
+              value={editDate}
+              onChangeText={setEditDate}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable
+                style={styles.modalBtn}
+                onPress={() => setEditingExpense(null)}
+              >
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.modalBtn, styles.modalSave]}
+                onPress={saveEdit}
+              >
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>
+                  Save
+                </Text>
+              </Pressable>
+            </View>
+
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
+
+// Styles Sheet 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#111827' },
+  container: { flex: 1, padding: 16, backgroundColor: '#0b1220' },
+
   heading: {
     fontSize: 24,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  form: {
-    marginBottom: 16,
-    gap: 8,
-  },
+
+  // Add Form
+  form: { marginBottom: 12 },
   input: {
     padding: 10,
-    backgroundColor: '#1f2937',
-    color: '#fff',
+    backgroundColor: '#121826',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: '#2b3240',
+    color: '#fff',
+    marginBottom: 8,
   },
+
+  // Expense Rows
   expenseRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1f2937',
+    backgroundColor: '#121826',
     padding: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+  },
+  expenseAmount: { fontSize: 18, color: '#fbbf24', fontWeight: '700' },
+  expenseCategory: { color: '#e5e7eb' },
+  expenseNote: { color: '#9ca3af', fontSize: 12 },
+  delete: { color: '#f87171', fontSize: 20, paddingLeft: 10 },
+
+  // Filters
+  filterRow: { flexDirection: 'row', marginBottom: 8 },
+  filterBtn: {
+    flex: 1,
+    padding: 10,
+    marginHorizontal: 4,
+    backgroundColor: '#1f2937',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  filterActive: { backgroundColor: '#374151' },
+  filterText: { color: '#fff', fontWeight: '600' },
+
+  // Totals Section
+  totals: {
+    backgroundColor: '#0f1724',
+    padding: 10,
     borderRadius: 8,
     marginBottom: 8,
   },
-  expenseAmount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fbbf24',
+  totalHeading: { color: '#fff', fontWeight: '700', marginBottom: 6 },
+  subHeading: { color: '#9ca3af', marginBottom: 6 },
+  catRow: { color: '#e5e7eb' },
+  emptySmall: { color: '#9ca3af' },
+
+  empty: { color: '#9ca3af', textAlign: 'center', marginTop: 20 },
+
+  // Edit Modal 
+  modalBack: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 20,
   },
-  expenseCategory: {
-    fontSize: 14,
-    color: '#e5e7eb',
+  modal: {
+    backgroundColor: '#0b1220',
+    padding: 16,
+    borderRadius: 12,
   },
-  expenseNote: {
-    fontSize: 12,
-    color: '#9ca3af',
+  modalTitle: { color: '#fff', fontSize: 18, marginBottom: 10 },
+
+  modalBtn: {
+    flex: 1,
+    backgroundColor: '#1f2937',
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
   },
-  delete: {
-    color: '#f87171',
-    fontSize: 20,
-    marginLeft: 12,
-  },
-  empty: {
-    color: '#9ca3af',
-    marginTop: 24,
-    textAlign: 'center',
-  },
-  footer: {
-    textAlign: 'center',
-    color: '#6b7280',
-    marginTop: 12,
-    fontSize: 12,
-  },
+  modalBtnText: { color: '#fff' },
+  modalSave: { backgroundColor: '#10b981' },
 });

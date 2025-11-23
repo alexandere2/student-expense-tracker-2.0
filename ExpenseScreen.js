@@ -105,14 +105,33 @@ export default function ExpenseScreen() {
       );
   };
 
-  
-    
-  const loadExpenses = async () => {
-    const rows = await db.getAllAsync(
-      'SELECT * FROM expenses ORDER BY id DESC;'
-    );
-    setExpenses(rows);
+  // Task 1B: Implement Filters: All / This Week / This Month
+  const buildFilterQuery = (baseSelect = 'SELECT * FROM expenses', totalsMode = false) => {
+    if (filter === 'all') {
+      // No data filtering 
+      return { sql: `${baseSelect} ORDER BY id DESC;`, paramas: [] };
+    }
+
+    // Compute date ranges for week or month 
+    let start, end;
+    if (filter === 'week') {
+      start = startOfWeekISO();
+      end = endOfWeekISO();
+    } else {
+      start = startOfMonthISO();
+      end = endOfMonthISO();
+    }
+
+    // totalsMode = caller will append custom SELECT columns 
+    const whereClause = `WHERE date BETWEEN ? AND ?`;
+
+    return totalsMode 
+    ? { sql: `${baseSelect} ${whereClause}`, params: [start, end] }
+      : { sql: `${baseSelect} ${whereClause} ORDER BY id DESC;`, params: [start, end] };
   };
+
+
+    // Compute totals per category 
   const addExpense = async () => {
     const amountNumber = parseFloat(amount);
 

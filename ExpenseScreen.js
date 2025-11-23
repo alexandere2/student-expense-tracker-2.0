@@ -130,14 +130,48 @@ export default function ExpenseScreen() {
       : { sql: `${baseSelect} ${whereClause} ORDER BY id DESC;`, params: [start, end] };
   };
 
+// Task 2: Show Total Spending (Overall & By Catgeory)
+  const loadExpenses = async () => {
+    const { sql, params } = buildFilterQuery('SELECT * FROM expenses');
+    const rows = await db.getAllAsync(sql, params);
 
+    // Make sure "amount" is numeric 
+    const parsed = rows.map((r) => ({ ...r, amount: Number(r.amount) }));
+    setExpenses(parsed);
+
+    // Update totals after loading 
+    computeTotals(parsed);
+  };
+
+  //Compute Totals + Category Breakdowns (Re-runs whenever list or filter changes)
+  const computeTotals = async (currentExpenses) => {
+    // Calculate total amount
+    const totalSum = currentExpenses.reduce(
+      (acc, e) => acc + (Number(e.amount) || 0),
+      0
+      );
+    setToal(totalSum);
     // Compute totals per category 
+    const categoryMap = {};
+    currentExpenses.forEach((e) => {
+      const c = e.category || 'Other';
+      categoryMap[c] = (categoryMap[c] || 0) + Number(e.amount);
+    });
+
+    const categoryArray = Object.entries(categoryMap).map(([category, sum]) => ({
+      category,
+      sum,
+    }));
+
+    setByCategory(categoryArray);
+  };
+
+  //Add New Expense (Automatically applies today's date)
   const addExpense = async () => {
     const amountNumber = parseFloat(amount);
-
     if (isNaN(amountNumber) || amountNumber <= 0) {
       // Basic validation: ignore invalid or non-positive amounts
-      return;
+      return Alert.alert("Invalid Amount", "Enter a positive nunber.");
     }
 
     const trimmedCategory = category.trim();
@@ -145,14 +179,17 @@ export default function ExpenseScreen() {
 
     if (!trimmedCategory) {
       // Category is required
-      return;
+      return Alert.alert("Category Required", "Enter a category.");
     }
 
+    const today = formatDateISO ();
+    
     await db.runAsync(
-      'INSERT INTO expenses (amount, category, note) VALUES (?, ?, ?);',
-      [amountNumber, trimmedCategory, trimmedNote || null]
+      'INSERT INTO expenses (amount, category, note, date) VALUES (?, ?, ?);',
+      [amountNumber, trimmedCategory, trimmedNote || null, today]
     );
 
+    // Reset inputs
     setAmount('');
     setCategory('');
     setNote('');
@@ -160,7 +197,7 @@ export default function ExpenseScreen() {
     loadExpenses();
   };
 
-
+// Delete Expense 
   const deleteExpense = async (id) => {
     await db.runAsync('DELETE FROM expenses WHERE id = ?;', [id]);
     loadExpenses();

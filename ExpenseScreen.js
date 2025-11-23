@@ -8,17 +8,105 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
+  Modal,
+  Pressable,
+  Alert,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 
+// TASK 1: Add a Date Column & Filter by Week / Month
+function formatDateISO(d = new Date()) {
+  // Returns date as "YYYY-MM-DD
+  const year = d.getFullYear();
+  const month = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  retrun `${year}-${month}-${day}`;
+
+  // Beginning of current week (Sunday)
+  function startOfWeekISO(date = new Date()) {
+    // Week Starts on Sunday 
+    const d = new Date(date);
+    const day = d.getDay(); // 0 (Sun) - 6 (Sat)
+    d.setDate(d.getDate() - day);
+    return formatDateISO(d);
+  }
+  
+// End of current week (Saturday)
+function endOfWeeksISO(date = new Date()) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() + (6 - day));
+  return formatDateISO(d);
+}
+  
+  function startOfMonthISO(date = new Date()) {
+    const d = new Date(date.getFullYear(), date.getMonth(), 1); // First day of month
+    return formatDateISO(d);
+  }
+
+  function endOfMonthISO(date = new Date()) {
+    const d = new Date(date.getFullYear(), date.getMonth() + 1, 0); // Last day of month
+    return formatDateISO(d);
+  }
+
+  // MAIN COMPONENT
 export default function ExpenseScreen() {
   const db = useSQLiteContext();
 
+  // State for list + add form 
   const [expenses, setExpenses] = useState([]);
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
 
+  // Current selected filter: all / week / month
+  const [filters, setFilter] = useState('all');
+
+  // Calculated totals
+  const [total, setTotal] = useState(0);
+  const [byCategory, setByCategory] = useState([]);
+
+  // State for editing modal 
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editDate, setEditDate] = useState(formatDateISO());
+
+// Ensures the "date' column exists (adds automatically if missing)
+  const ensureSchema = async () => {
+    // Create table if needed (legacy format)
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      amount REAL NOT NULL,
+      category TEXT NOT NULL,
+      note TEXT
+    );
+    `);
+
+// Check if "date" column exists
+    const info = await db.getAllAsync(`PRAGMA table_info(expenses);`);
+    const hasDate = info.some((column) => column.name === 'date');
+
+// Add "date" column if missing 
+    if (!hasDate) {
+      try {
+        await db.execAsync(`ALTER TABLE expenses ADD COLUMN date TEXT'`);
+      } catch (e) {
+        console.warn("Date column may already exist:", e);
+      }
+    }
+    
+  // Set default date for old rows where date is NULL
+    await db.execAsync(
+      `UPDATE expenses SET date = ? WHERE date IS NULL OR date = '';`,
+      [formatDateISO()]
+      );
+  };
+
+  
+    
   const loadExpenses = async () => {
     const rows = await db.getAllAsync(
       'SELECT * FROM expenses ORDER BY id DESC;'

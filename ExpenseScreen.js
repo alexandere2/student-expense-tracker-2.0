@@ -290,7 +290,12 @@ export default function ExpenseScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <Text style={styles.heading}>Student Expense Tracker</Text>
-
+      <View style={{ marginBottom: 20 }}>
+        <Text style={{ fontSize: 22, fontWeight: '600', color: '#fff', marginBottom: 10 }}>Expense By Category</Text>
+        <Text style ={{ color: '#9ca3af', marginBottom: 10 }}>Total: ${total.toFixed(2)}</Text>
+        <CategoryChart data={byCategory} />
+      </View>
+    
       // Add Form
       <View style={styles.form}>
         <TextInput

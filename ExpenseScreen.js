@@ -14,6 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import CategoryChart from './CategoryChart';
 
 // Task 1A: Add a date Column to the Expenses Table
 function formatDateISO(d = new Date()) {
